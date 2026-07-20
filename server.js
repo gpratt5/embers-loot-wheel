@@ -160,6 +160,45 @@ app.post('/api/wheel/:wheel/move', requireAdmin, (req, res) => {
   res.json(getWheel(wheel));
 });
 
+// Randomize the current order of everyone already on a wheel
+app.post('/api/wheel/:wheel/shuffle', requireAdmin, (req, res) => {
+  const { wheel } = req.params;
+  if (!validWheel(wheel)) return res.status(400).json({ error: 'Invalid wheel' });
+
+  const players = getWheel(wheel);
+  for (let i = players.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [players[i], players[j]] = [players[j], players[i]];
+  }
+  renumberAndSave(wheel, players);
+  res.json(getWheel(wheel));
+});
+
+// Replace this wheel's roster with a (freshly shuffled) copy of the other wheel's names
+app.post('/api/wheel/:wheel/copy-from', requireAdmin, (req, res) => {
+  const { wheel } = req.params;
+  const { source } = req.body || {};
+  if (!validWheel(wheel)) return res.status(400).json({ error: 'Invalid target wheel' });
+  if (!validWheel(source) || source === wheel) return res.status(400).json({ error: 'Invalid source wheel' });
+
+  const sourcePlayers = getWheel(source);
+
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM players WHERE wheel = ?').run(wheel);
+    const insert = db.prepare('INSERT INTO players (wheel, name, position) VALUES (?, ?, ?)');
+    // Insert in a shuffled order right away
+    const shuffled = [...sourcePlayers];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    shuffled.forEach((p, i) => insert.run(wheel, p.name, i));
+  });
+  tx();
+
+  res.json(getWheel(wheel));
+});
+
 app.get('/healthz', (req, res) => res.json({ ok: true }));
 
 app.listen(PORT, () => {
