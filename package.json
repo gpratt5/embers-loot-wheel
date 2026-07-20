@@ -1,0 +1,13 @@
+{
+  "name": "ember-loot-ledger",
+  "version": "2.0.0",
+  "description": "Loot tracker for Ember's Adrift - rune wishlists, fair rolling cycles, relic/artifact history, GitHub-backed storage, and approval-based access.",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node server.js"
+  },
+  "license": "UNLICENSED"
+}

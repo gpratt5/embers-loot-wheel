@@ -1,0 +1,1201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Ember's Adrift — Loot Ledger</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Inter:wght@400;500;600&display=swap');
+
+:root{
+  --bg:#181310;
+  --panel:#221a15;
+  --panel-2:#2a201a;
+  --border:#3d2f26;
+  --ember:#ff7a3d;
+  --ember-dim:#a8532a;
+  --gold:#d9a441;
+  --rune:#5ce1d6;
+  --text:#f0e6da;
+  --text-dim:#b8a894;
+  --text-faint:#7a6c5d;
+  --danger:#e0554a;
+  --ok:#7ec97a;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--bg);color:var(--text);font-family:'Inter',sans-serif;}
+.app{max-width:1000px;margin:0 auto;padding:28px 20px 60px;}
+.hero{display:flex;align-items:baseline;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:18px;margin-bottom:22px;}
+h1{font-family:'Cinzel',serif;font-weight:700;font-size:26px;margin:0;letter-spacing:0.5px;}
+h1 span{color:var(--ember);}
+.subtitle{font-size:13px;color:var(--text-faint);margin-top:4px;}
+.status{font-size:12px;color:var(--text-faint);text-align:right;}
+.status.ok{color:var(--rune);}
+.status.err{color:var(--danger);}
+
+.tabs{display:flex;gap:4px;margin-bottom:24px;border-bottom:1px solid var(--border);flex-wrap:wrap;}
+.tab{font-family:'Cinzel',serif;padding:10px 16px;cursor:pointer;color:var(--text-dim);font-size:14px;letter-spacing:0.3px;border-bottom:2px solid transparent;user-select:none;}
+.tab.active{color:var(--ember);border-bottom-color:var(--ember);}
+.tab:hover{color:var(--text);}
+
+.panel{display:none;}
+.panel.active{display:block;}
+
+.card{background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:18px 20px;margin-bottom:18px;}
+.card h2{font-family:'Cinzel',serif;font-size:15px;font-weight:500;color:var(--gold);margin:0 0 14px;letter-spacing:0.4px;border-bottom:1px solid var(--border);padding-bottom:8px;}
+
+input[type=text], input[type=number], select{
+  background:var(--panel-2);border:1px solid var(--border);color:var(--text);
+  border-radius:4px;padding:7px 10px;font-size:13px;font-family:'Inter',sans-serif;
+}
+input[type=text]:focus, input[type=number]:focus, select:focus{outline:none;border-color:var(--ember-dim);}
+
+.btn{font-family:'Inter',sans-serif;font-weight:500;font-size:13px;background:transparent;border:1px solid var(--ember-dim);color:var(--ember);padding:7px 14px;border-radius:4px;cursor:pointer;}
+.btn:hover{background:rgba(255,122,61,0.1);}
+.btn.small{padding:4px 9px;font-size:12px;}
+.btn.danger{border-color:var(--danger);color:var(--danger);}
+.btn.danger:hover{background:rgba(224,85,74,0.1);}
+.btn.ghost{border-color:var(--border);color:var(--text-dim);}
+
+.roster-add{display:flex;gap:8px;margin-bottom:14px;}
+.roster-add input{flex:1;}
+.roster-list{display:flex;flex-direction:column;gap:6px;}
+.roster-item{display:flex;align-items:center;justify-content:space-between;background:var(--panel-2);border:1px solid var(--border);border-radius:4px;padding:8px 12px;font-size:13px;}
+.roster-item .rname{font-weight:500;}
+
+.rune-import-row{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;}
+#rune-json-paste-box{margin-bottom:10px;}
+#rune-json-paste-box textarea{width:100%;background:var(--panel-2);border:1px solid var(--border);color:var(--text);border-radius:4px;padding:8px 10px;font-size:12px;font-family:monospace;resize:vertical;}
+#rune-import-status.err{color:var(--danger);}
+#rune-import-status.ok{color:var(--ok);}
+
+.wish-table-wrap{overflow-x:auto;}
+table.wish-table{border-collapse:collapse;font-size:12px;width:100%;}
+table.wish-table th, table.wish-table td{border:1px solid var(--border);padding:5px 7px;text-align:center;white-space:nowrap;}
+table.wish-table th{color:var(--text-faint);font-weight:500;background:var(--panel-2);}
+table.wish-table td:first-child, table.wish-table th:first-child{text-align:left;position:sticky;left:0;background:var(--panel);min-width:140px;}
+table.wish-table input[type=number]{width:64px;padding:7px 6px;font-size:14px;text-align:center;}
+input[type=number].has-value{background:rgba(126,201,122,0.28);border-color:var(--ok);color:var(--text);}
+table.wish-table input[type=text]{width:120px;padding:4px 6px;}
+
+.drop-form{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:6px;}
+.drop-form select{min-width:150px;}
+
+.rune-status{font-size:13px;color:var(--text-dim);margin:8px 0 14px;}
+.player-row{display:flex;align-items:center;justify-content:space-between;background:var(--panel-2);border:1px solid var(--border);border-radius:4px;padding:9px 12px;margin-bottom:6px;}
+.player-row.eligible{border-color:var(--ok);}
+.player-row.waiting{opacity:0.55;}
+.player-row.done{opacity:0.4;}
+.player-name{font-size:13px;font-weight:500;}
+.player-meta{font-size:11px;color:var(--text-faint);margin-left:8px;}
+.tag-badge{font-size:10px;padding:2px 7px;border-radius:10px;margin-left:6px;}
+.tag-badge.ok{background:rgba(126,201,122,0.15);color:var(--ok);}
+.tag-badge.waiting{background:rgba(217,164,65,0.15);color:var(--gold);}
+.tag-badge.done{background:rgba(122,108,93,0.2);color:var(--text-faint);}
+
+.history-list{display:flex;flex-direction:column;gap:6px;}
+.hist-row{display:flex;align-items:center;justify-content:space-between;background:var(--panel-2);border:1px solid var(--border);border-radius:4px;padding:8px 12px;font-size:12px;}
+.hist-main b{color:var(--gold);font-weight:500;}
+.hist-time{color:var(--text-faint);font-size:11px;}
+
+.empty{color:var(--text-faint);font-size:13px;padding:10px 0;}
+.hint{font-size:12px;color:var(--text-faint);margin-top:6px;line-height:1.5;}
+.hint code{color:var(--rune);}
+.section-sub{font-size:12px;color:var(--text-faint);text-transform:uppercase;letter-spacing:0.5px;margin:16px 0 8px;}
+.footer-note{font-size:11px;color:var(--text-faint);text-align:center;margin-top:30px;}
+
+.auth-screen{display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px;}
+.auth-card{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:32px;max-width:400px;width:100%;text-align:center;}
+.auth-card.wide{max-width:680px;text-align:left;}
+.auth-card h1{font-size:22px;margin-bottom:4px;}
+.auth-card .subtitle{margin-bottom:20px;}
+.auth-card input[type=text], .auth-card input[type=password]{width:100%;padding:10px 12px;font-size:14px;margin-bottom:10px;}
+.auth-card .btn{width:100%;}
+.admin-row{display:flex;align-items:center;justify-content:space-between;background:var(--panel-2);border:1px solid var(--border);border-radius:4px;padding:9px 12px;margin-bottom:6px;gap:10px;}
+.admin-row .admin-name{font-size:13px;font-weight:500;}
+.admin-row .admin-meta{font-size:11px;color:var(--text-faint);}
+.admin-link-box{background:var(--panel-2);border:1px solid var(--ok);border-radius:4px;padding:8px 10px;font-family:monospace;font-size:12px;word-break:break-all;margin-top:8px;}
+</style>
+</head>
+<body>
+
+<div id="request-access-screen" class="auth-screen" style="display:none;">
+  <div class="auth-card">
+    <h1>Ember<span>'s Adrift</span></h1>
+    <div class="subtitle">Loot Ledger — request access</div>
+    <div class="hint" id="request-status"></div>
+    <input type="text" id="request-name-input" placeholder="Your character name">
+    <button class="btn" id="request-access-btn">Request access</button>
+    <div class="hint">Ask your guild admin to approve you, then use the link they send back — no password to remember after that.</div>
+  </div>
+</div>
+
+<div id="admin-screen" class="auth-screen" style="display:none;">
+  <div class="auth-card wide">
+    <h1>Ember<span>'s Adrift</span></h1>
+    <div class="subtitle">Admin — approve access requests</div>
+    <div class="drop-form">
+      <input type="password" id="admin-password-input" placeholder="Admin password" style="flex:1;">
+      <button class="btn" id="admin-login-btn">Load requests</button>
+    </div>
+    <div class="hint" id="admin-status"></div>
+    <div class="section-sub">Pending requests</div>
+    <div id="admin-pending-list"></div>
+    <div class="section-sub">Approved users</div>
+    <div id="admin-approved-list"></div>
+  </div>
+</div>
+
+<div class="app" id="main-app" style="display:none;">
+
+  <div class="hero">
+    <div>
+      <h1>Ember<span>'s Adrift</span> — Loot Ledger</h1>
+      <div class="subtitle">Rune wishlists, fair rolling cycles, and gear drop history</div>
+    </div>
+    <div class="status" id="status">loading…</div>
+  </div>
+
+
+  <div class="tabs">
+    <div class="tab active" data-tab="players">Players</div>
+    <div class="tab" data-tab="wishlist">Rune wishlist</div>
+    <div class="tab" data-tab="stock">Guild stock</div>
+    <div class="tab" data-tab="materials">Materials</div>
+    <div class="tab" data-tab="runedrop">Log a rune drop</div>
+    <div class="tab" data-tab="geardrop">Log a relic / artifact</div>
+    <div class="tab" data-tab="history">History</div>
+  </div>
+
+  <div class="panel active" id="panel-players">
+    <div class="card">
+      <h2>Add player</h2>
+      <div class="roster-add">
+        <input type="text" id="new-player-name" placeholder="Character name">
+        <button class="btn" id="add-player-btn">Add</button>
+      </div>
+      <div class="roster-list" id="roster-list"></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-wishlist">
+    <div class="card">
+      <h2>Runes (27)</h2>
+      <div class="rune-import-row">
+        <button class="btn small ghost" id="rune-list-paste-toggle">Paste rune list</button>
+        <label class="btn small ghost" for="rune-json-file">Import wishlist JSON<input type="file" id="rune-json-file" accept=".json,application/json" style="display:none;"></label>
+        <button class="btn small ghost" id="rune-json-export">Export wishlist JSON</button>
+        <button class="btn small ghost" id="rune-json-paste-toggle">Paste wishlist JSON instead</button>
+      </div>
+      <div id="rune-list-paste-box" style="display:none;">
+        <textarea id="rune-list-textarea" rows="6" placeholder="Celerity&#9;Haste&#10;Deft Strikes&#9;Attack speed&#10;Energy&#9;Mana regen"></textarea>
+        <button class="btn small" id="rune-list-paste-load">Import names + stats</button>
+      </div>
+      <div id="rune-json-paste-box" style="display:none;">
+        <textarea id="rune-json-textarea" rows="6" placeholder='{"Celerity": {"Alice": 2, "Bob": 1}, "Precision": {"Alice": 1}}'></textarea>
+        <button class="btn small" id="rune-json-paste-load">Load pasted JSON</button>
+      </div>
+      <div class="hint" id="rune-import-status"></div>
+      <div class="hint">Paste a rune list — one per line, straight from a spreadsheet column or two (name, then stat) separated by a tab, comma, colon, or dash. Names not yet on the table are added; matching names keep their existing quantities and only pick up a new stat if you provide one. Wishlist JSON import/export is for backing up the full <code>{"Rune name": {"Player name": quantity}}</code> table, including quantities.</div>
+      <div class="wish-table-wrap"><table class="wish-table" id="wish-table"></table></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-stock">
+    <div class="card">
+      <h2>Runes on hand</h2>
+      <div class="hint">Same rune list as the wishlist tab — add or edit runes there and they'll show up here too. Fill in how many Greater and Lower runes the guild currently has stockpiled of each.</div>
+      <div class="wish-table-wrap"><table class="wish-table" id="stock-table"></table></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-materials">
+    <div class="card">
+      <h2>Crafting materials on hand</h2>
+      <div class="wish-table-wrap"><table class="wish-table" id="materials-table"></table></div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-runedrop">
+    <div class="card">
+      <h2>Which rune dropped?</h2>
+      <div class="drop-form">
+        <select id="rune-drop-select"></select>
+        <button class="btn small ghost" id="rune-force-reset">Force-reset this rune's cycle</button>
+      </div>
+      <div class="rune-status" id="rune-status"></div>
+    </div>
+    <div class="card">
+      <h2>Roll result</h2>
+      <div id="rune-eligible-list"></div>
+      <div class="hint">Everyone below wants this rune. Roll it in-game among the players marked eligible, then click their name here to record the winner. Once every eligible player has won one this cycle, the cycle resets and they all become eligible again — up to the quantity each of them still wants.</div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-geardrop">
+    <div class="card">
+      <h2>What dropped?</h2>
+      <div class="drop-form">
+        <select id="gear-type">
+          <option value="relic">Relic (weapon)</option>
+          <option value="artifact">Artifact (armor)</option>
+        </select>
+        <select id="gear-tier">
+          <option value="Lower Ibaxus">Lower Ibaxus</option>
+          <option value="Upper Ibaxus">Upper Ibaxus</option>
+        </select>
+        <select id="gear-category" style="display:none;">
+          <option value="Inner">Inner</option>
+          <option value="Outer">Outer</option>
+        </select>
+        <select id="gear-slot" style="display:none;"></select>
+      </div>
+      <div class="drop-form">
+        <input type="text" id="gear-item-name" placeholder="Item name (optional)" style="flex:1;min-width:220px;">
+        <select id="gear-winner"></select>
+        <button class="btn" id="gear-award-btn">Record winner</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel" id="panel-history">
+    <div class="card">
+      <div class="drop-form" style="margin-bottom:4px;">
+        <label for="history-player-filter" style="font-size:13px;color:var(--text-dim);">Filter by player:</label>
+        <select id="history-player-filter"></select>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Rune awards</h2>
+      <div class="history-list" id="rune-history-list"></div>
+    </div>
+    <div class="card">
+      <h2>Relic / artifact awards</h2>
+      <div class="history-list" id="gear-history-list"></div>
+    </div>
+    <div class="card">
+      <h2>Backup</h2>
+      <div class="rune-import-row">
+        <button class="btn small" id="backup-export-btn">Download full backup</button>
+        <label class="btn small ghost" for="backup-import-file">Restore from backup<input type="file" id="backup-import-file" accept=".json,application/json" style="display:none;"></label>
+      </div>
+      <div class="hint" id="backup-status"></div>
+      <div class="hint">The ledger already autosaves as you go, and reloads it the next time you open this page — this is just a portable snapshot you can move between machines or keep as a dated backup.</div>
+    </div>
+    <div class="card">
+      <button class="btn danger small" id="reset-btn">Reset all data</button>
+      <div class="hint">This clears players, wishlists, cycle state and history for everyone using this ledger.</div>
+    </div>
+  </div>
+
+  <div class="footer-note">Saves through your ledger server. Rolls happen in-game — this app only tracks wishlists, fair cycle order, and drop history.</div>
+</div>
+
+<script>
+const DEFAULT_RUNE_NAMES = ["Celerity","Deft Strikes","Energy","Mighty Force","Precision","Vigor"];
+const INNER_SLOTS = ["Shirt","Pants","Boots","Belt","Gloves"];
+const OUTER_SLOTS = ["Helm","Earring 1","Earring 2","Ring 1","Ring 2","Pauldron 1","Pauldron 2","Cuirass","Faulds","Greave 1","Greave 2"];
+const MATERIAL_NAMES = ["Rune Dust","Central Relic Scraps","Lower Relic Scraps","Central Artifact Scraps","Lower Artifact Scraps"];
+
+let players, runes, wishlist, runeCycle, runeHistory, gearHistory, runeStock, runeStockLower, materialStock;
+let saveTimer = null;
+
+function defaultRunes(){
+  return DEFAULT_RUNE_NAMES.concat(Array.from({length:21}, (_,i)=>`Rune ${i+7}`))
+    .map(n=>({ name:n, stat:'' }));
+}
+
+let authToken = null;
+
+function authHeaders(extra){
+  return Object.assign({}, extra || {}, authToken ? { 'Authorization': 'Bearer ' + authToken } : {});
+}
+
+async function loadState(){
+  const res = await fetch('/api/data', { headers: authHeaders() });
+  if(res.status === 401){ return { unauthorized: true }; }
+  if(!res.ok) throw new Error('bad response');
+  return await res.json();
+}
+async function saveState(){
+  try{
+    const state = { players, runes, wishlist, runeCycle, runeHistory, gearHistory, runeStock, runeStockLower, materialStock };
+    const res = await fetch('/api/data', {
+      method: 'POST',
+      headers: authHeaders({'Content-Type': 'application/json'}),
+      body: JSON.stringify(state)
+    });
+    if(res.status === 401){ setStatus('access revoked — reload and request access again', false); return; }
+    if(!res.ok) throw new Error('save failed');
+    setStatus('saved', true);
+  }catch(e){
+    setStatus('save failed — is the server running?', false);
+  }
+}
+function setStatus(msg, ok){
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.className = 'status ' + (ok===true?'ok':ok===false?'err':'');
+  if(ok===true){
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(()=>{ el.textContent='synced'; }, 1200);
+  }
+}
+
+async function persistPlayers(){ await saveState(); renderAll(); }
+async function persistRunes(){ await saveState(); renderAll(); }
+async function persistWishlist(){ await saveState(); renderAll(); }
+async function persistCycle(){ await saveState(); renderAll(); }
+async function persistRuneHistory(){ await saveState(); renderAll(); }
+async function persistStock(){ await saveState(); renderAll(); }
+async function persistMaterials(){ await saveState(); renderAll(); }
+async function persistGearHistory(){ await saveState(); renderAll(); }
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function playerById(id){ return players.find(p=>p.id===id); }
+
+function updateNumberHighlight(inp){
+  const val = parseInt(inp.value,10) || 0;
+  inp.classList.toggle('has-value', val !== 0);
+}
+
+function receivedCount(rune, playerId){
+  return runeHistory.filter(h=>h.rune===rune && h.playerId===playerId).length;
+}
+
+function wantersFor(rune){
+  const wl = wishlist[rune] || {};
+  return players.filter(p=>{
+    const target = wl[p.id] || 0;
+    return target > 0 && receivedCount(rune, p.id) < target;
+  });
+}
+
+function cycleSetFor(rune){
+  return new Set(runeCycle[rune] || []);
+}
+
+function renderRoster(){
+  const list = document.getElementById('roster-list');
+  list.innerHTML = '';
+  if(players.length===0){
+    list.innerHTML = '<div class="empty">No players added yet.</div>';
+    return;
+  }
+  players.forEach(p=>{
+    const row = document.createElement('div');
+    row.className = 'roster-item';
+    row.innerHTML = `<span class="rname">${escapeHtml(p.name)}</span>`;
+    const rm = document.createElement('button');
+    rm.className = 'btn ghost small';
+    rm.textContent = 'Remove';
+    rm.addEventListener('click', ()=>{
+      players = players.filter(x=>x.id!==p.id);
+      persistPlayers();
+    });
+    row.appendChild(rm);
+    list.appendChild(row);
+  });
+}
+
+function renderWishTable(){
+  const table = document.getElementById('wish-table');
+  table.innerHTML = '';
+  const thead = document.createElement('tr');
+  thead.innerHTML = '<th>Rune name</th><th>Stat</th>' + players.map(p=>`<th>${escapeHtml(p.name)}</th>`).join('');
+  table.appendChild(thead);
+
+  runes.forEach((rune, idx)=>{
+    const tr = document.createElement('tr');
+    const nameTd = document.createElement('td');
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.value = rune.name;
+    nameInput.addEventListener('change', ()=>{
+      const oldName = runes[idx].name;
+      const newName = nameInput.value || oldName;
+      if(newName !== oldName){
+        if(wishlist[oldName]){ wishlist[newName] = wishlist[oldName]; delete wishlist[oldName]; }
+        if(runeCycle[oldName]){ runeCycle[newName] = runeCycle[oldName]; delete runeCycle[oldName]; }
+        if(runeStock[oldName]!==undefined){ runeStock[newName] = runeStock[oldName]; delete runeStock[oldName]; }
+        if(runeStockLower[oldName]!==undefined){ runeStockLower[newName] = runeStockLower[oldName]; delete runeStockLower[oldName]; }
+        runeHistory.forEach(h=>{ if(h.rune===oldName) h.rune = newName; });
+        runes[idx].name = newName;
+      }
+      persistRunes();
+    });
+    nameTd.appendChild(nameInput);
+    tr.appendChild(nameTd);
+
+    const statTd = document.createElement('td');
+    const statInput = document.createElement('input');
+    statInput.type = 'text';
+    statInput.value = rune.stat || '';
+    statInput.placeholder = '—';
+    statInput.style.width = '110px';
+    statInput.addEventListener('change', ()=>{
+      runes[idx].stat = statInput.value;
+      persistRunes();
+    });
+    statTd.appendChild(statInput);
+    tr.appendChild(statTd);
+
+    players.forEach(p=>{
+      const td = document.createElement('td');
+      const inp = document.createElement('input');
+      inp.type = 'number';
+      inp.min = '0';
+      inp.value = (wishlist[rune.name] && wishlist[rune.name][p.id]) || 0;
+      updateNumberHighlight(inp);
+      inp.addEventListener('change', ()=>{
+        const val = Math.max(0, parseInt(inp.value,10) || 0);
+        if(!wishlist[rune.name]) wishlist[rune.name] = {};
+        wishlist[rune.name][p.id] = val;
+        updateNumberHighlight(inp);
+        persistWishlist();
+      });
+      td.appendChild(inp);
+      tr.appendChild(td);
+    });
+    table.appendChild(tr);
+  });
+}
+
+function renderStockTable(){
+  const table = document.getElementById('stock-table');
+  if(!table) return;
+  table.innerHTML = '';
+  const thead = document.createElement('tr');
+  thead.innerHTML = '<th>Rune name</th><th>Stat</th><th>Greater</th><th>Lower</th>';
+  table.appendChild(thead);
+
+  runes.forEach(rune=>{
+    const tr = document.createElement('tr');
+    const nameTd = document.createElement('td');
+    nameTd.textContent = rune.name;
+    tr.appendChild(nameTd);
+
+    const statTd = document.createElement('td');
+    statTd.textContent = rune.stat || '—';
+    tr.appendChild(statTd);
+
+    const greaterTd = document.createElement('td');
+    const greaterInp = document.createElement('input');
+    greaterInp.type = 'number';
+    greaterInp.min = '0';
+    greaterInp.value = runeStock[rune.name] || 0;
+    updateNumberHighlight(greaterInp);
+    greaterInp.addEventListener('change', ()=>{
+      const val = Math.max(0, parseInt(greaterInp.value,10) || 0);
+      runeStock[rune.name] = val;
+      updateNumberHighlight(greaterInp);
+      persistStock();
+    });
+    greaterTd.appendChild(greaterInp);
+    tr.appendChild(greaterTd);
+
+    const lowerTd = document.createElement('td');
+    const lowerInp = document.createElement('input');
+    lowerInp.type = 'number';
+    lowerInp.min = '0';
+    lowerInp.value = runeStockLower[rune.name] || 0;
+    updateNumberHighlight(lowerInp);
+    lowerInp.addEventListener('change', ()=>{
+      const val = Math.max(0, parseInt(lowerInp.value,10) || 0);
+      runeStockLower[rune.name] = val;
+      updateNumberHighlight(lowerInp);
+      persistStock();
+    });
+    lowerTd.appendChild(lowerInp);
+    tr.appendChild(lowerTd);
+
+    table.appendChild(tr);
+  });
+}
+
+function renderMaterialsTable(){
+  const table = document.getElementById('materials-table');
+  if(!table) return;
+  table.innerHTML = '';
+  const thead = document.createElement('tr');
+  thead.innerHTML = '<th>Material</th><th>On hand</th>';
+  table.appendChild(thead);
+
+  MATERIAL_NAMES.forEach(name=>{
+    const tr = document.createElement('tr');
+    const nameTd = document.createElement('td');
+    nameTd.textContent = name;
+    tr.appendChild(nameTd);
+
+    const qtyTd = document.createElement('td');
+    const inp = document.createElement('input');
+    inp.type = 'number';
+    inp.min = '0';
+    inp.value = materialStock[name] || 0;
+    updateNumberHighlight(inp);
+    inp.addEventListener('change', ()=>{
+      const val = Math.max(0, parseInt(inp.value,10) || 0);
+      materialStock[name] = val;
+      updateNumberHighlight(inp);
+      persistMaterials();
+    });
+    qtyTd.appendChild(inp);
+    tr.appendChild(qtyTd);
+    table.appendChild(tr);
+  });
+}
+
+function parseRuneListLine(line){
+  let idx;
+  if((idx = line.indexOf('\t')) !== -1) return [line.slice(0,idx).trim(), line.slice(idx+1).trim()];
+  if((idx = line.indexOf(' - ')) !== -1) return [line.slice(0,idx).trim(), line.slice(idx+3).trim()];
+  if((idx = line.indexOf(':')) !== -1) return [line.slice(0,idx).trim(), line.slice(idx+1).trim()];
+  if((idx = line.indexOf(',')) !== -1) return [line.slice(0,idx).trim(), line.slice(idx+1).trim()];
+  if((idx = line.search(/\.\s+/)) !== -1) return [line.slice(0,idx).trim(), line.slice(idx+1).trim()];
+  return [line.trim(), ''];
+}
+
+function importRuneListFromText(text){
+  const lines = text.split(/\r?\n/).map(l=>l.trim()).filter(l=>l.length>0);
+  if(lines.length===0) throw new Error('Nothing to import — paste at least one rune name.');
+  const oldStats = {};
+  runes.forEach(r=>{ oldStats[r.name] = r.stat; });
+  const newRunes = lines.map(line=>{
+    const [name, stat] = parseRuneListLine(line);
+    return { name, stat: stat || oldStats[name] || '' };
+  });
+  runes = newRunes;
+  persistRunes();
+  const status = document.getElementById('rune-import-status');
+  status.textContent = `Loaded ${newRunes.length} rune names${newRunes.some(r=>r.stat)?' with stats':''}.`;
+  status.className = 'hint ok';
+}
+
+function importWishlistFromObject(obj){
+  const entries = Object.entries(obj);
+  if(entries.length===0) throw new Error('No rune entries found in JSON.');
+  const oldStats = {};
+  runes.forEach(r=>{ oldStats[r.name] = r.stat; });
+  const newRunes = [];
+  const newWishlist = {};
+  entries.forEach(([runeName, wants])=>{
+    if(typeof wants !== 'object' || wants===null || Array.isArray(wants)){
+      throw new Error(`Rune "${runeName}" must map to an object of {"Player name": quantity}.`);
+    }
+    newRunes.push({ name: runeName, stat: oldStats[runeName] || '' });
+    newWishlist[runeName] = {};
+    Object.entries(wants).forEach(([playerName, qty])=>{
+      let player = players.find(p=>p.name===playerName);
+      if(!player){
+        player = { id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now())+Math.random(), name: playerName };
+        players.push(player);
+      }
+      newWishlist[runeName][player.id] = Math.max(0, parseInt(qty,10) || 0);
+    });
+  });
+  runes = newRunes;
+  wishlist = newWishlist;
+  runeCycle = {};
+  persistPlayers();
+  persistRunes();
+  persistWishlist();
+  persistCycle();
+  const status = document.getElementById('rune-import-status');
+  status.textContent = `Loaded ${newRunes.length} runes across ${players.length} players.`;
+  status.className = 'hint ok';
+}
+
+function exportWishlistToObject(){
+  const obj = {};
+  runes.forEach(rune=>{
+    const wl = wishlist[rune.name] || {};
+    const byName = {};
+    Object.entries(wl).forEach(([pid, qty])=>{
+      const p = playerById(pid);
+      if(p && qty>0) byName[p.name] = qty;
+    });
+    obj[rune.name] = byName;
+  });
+  return obj;
+}
+
+function setupRuneImportExport(){
+  const fileInput = document.getElementById('rune-json-file');
+  const exportBtn = document.getElementById('rune-json-export');
+  const pasteToggle = document.getElementById('rune-json-paste-toggle');
+  const pasteBox = document.getElementById('rune-json-paste-box');
+  const pasteLoad = document.getElementById('rune-json-paste-load');
+  const status = document.getElementById('rune-import-status');
+
+  const listPasteToggle = document.getElementById('rune-list-paste-toggle');
+  const listPasteBox = document.getElementById('rune-list-paste-box');
+  const listPasteLoad = document.getElementById('rune-list-paste-load');
+
+  listPasteToggle.addEventListener('click', ()=>{
+    listPasteBox.style.display = listPasteBox.style.display==='none' ? '' : 'none';
+  });
+  listPasteLoad.addEventListener('click', ()=>{
+    const ta = document.getElementById('rune-list-textarea');
+    try{ importRuneListFromText(ta.value); }
+    catch(e){ status.textContent = e.message; status.className = 'hint err'; }
+  });
+
+  fileInput.addEventListener('change', ()=>{
+    const file = fileInput.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      try{ importWishlistFromObject(JSON.parse(reader.result)); }
+      catch(e){ status.textContent = 'Could not read that file: ' + e.message; status.className = 'hint err'; }
+    };
+    reader.readAsText(file);
+    fileInput.value = '';
+  });
+
+  exportBtn.addEventListener('click', ()=>{
+    const blob = new Blob([JSON.stringify(exportWishlistToObject(), null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'ember-rune-wishlist.json'; a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  pasteToggle.addEventListener('click', ()=>{
+    pasteBox.style.display = pasteBox.style.display==='none' ? '' : 'none';
+  });
+
+  pasteLoad.addEventListener('click', ()=>{
+    const ta = document.getElementById('rune-json-textarea');
+    try{ importWishlistFromObject(JSON.parse(ta.value)); }
+    catch(e){ status.textContent = 'Could not parse that JSON: ' + e.message; status.className = 'hint err'; }
+  });
+}
+
+function renderRuneDropTab(){
+  const select = document.getElementById('rune-drop-select');
+  const prev = select.value;
+  select.innerHTML = runes.map(r=>`<option value="${escapeHtml(r.name)}">${escapeHtml(r.name)}${r.stat?' — '+escapeHtml(r.stat):''}</option>`).join('');
+  if(runes.some(r=>r.name===prev)) select.value = prev;
+  renderRuneEligible();
+}
+
+function renderRuneEligible(){
+  const rune = document.getElementById('rune-drop-select').value;
+  const statusEl = document.getElementById('rune-status');
+  const listEl = document.getElementById('rune-eligible-list');
+  if(!rune){
+    statusEl.textContent = '';
+    listEl.innerHTML = '<div class="empty">No runes configured yet — add some in the Rune wishlist tab.</div>';
+    return;
+  }
+  const wanters = wantersFor(rune);
+  const cycleSet = cycleSetFor(rune);
+  const wl = wishlist[rune] || {};
+  const allInterested = players.filter(p=>(wl[p.id]||0) > 0);
+
+  if(allInterested.length===0){
+    statusEl.textContent = 'No one currently wants this rune.';
+    listEl.innerHTML = '<div class="empty">Add quantities in the Rune wishlist tab to track this rune.</div>';
+    return;
+  }
+  const remaining = wanters.length;
+  const eligibleNow = wanters.filter(p=>!cycleSet.has(p.id));
+  statusEl.textContent = `${remaining} player${remaining===1?'':'s'} still working toward their target · ${eligibleNow.length} eligible to roll right now this cycle.`;
+
+  listEl.innerHTML = '';
+  allInterested.forEach(p=>{
+    const target = wl[p.id] || 0;
+    const got = receivedCount(rune, p.id);
+    const row = document.createElement('div');
+    let cls, badge, badgeClass;
+    if(got >= target){
+      cls = 'done'; badge = 'target met'; badgeClass = 'done';
+    } else if(cycleSet.has(p.id)){
+      cls = 'waiting'; badge = 'waiting for reset'; badgeClass = 'waiting';
+    } else {
+      cls = 'eligible'; badge = 'eligible'; badgeClass = 'ok';
+    }
+    row.className = 'player-row ' + cls;
+    row.innerHTML = `<div><span class="player-name">${escapeHtml(p.name)}</span><span class="player-meta">${got}/${target}</span><span class="tag-badge ${badgeClass}">${badge}</span></div>`;
+    if(cls==='eligible'){
+      const btn = document.createElement('button');
+      btn.className = 'btn small';
+      btn.textContent = 'Record win';
+      btn.addEventListener('click', ()=>awardRune(rune, p));
+      row.appendChild(btn);
+    }
+    listEl.appendChild(row);
+  });
+}
+
+async function awardRune(rune, player){
+  runeHistory.push({
+    id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+    ts: Date.now(), rune, playerId: player.id, playerName: player.name
+  });
+  if(!runeCycle[rune]) runeCycle[rune] = [];
+  runeCycle[rune].push(player.id);
+
+  const stillWanting = wantersFor(rune);
+  const cycleSet = new Set(runeCycle[rune]);
+  const stillEligible = stillWanting.filter(p=>!cycleSet.has(p.id));
+  if(stillWanting.length > 0 && stillEligible.length === 0){
+    runeCycle[rune] = [];
+  }
+  await saveState();
+  renderAll();
+}
+
+function setupRuneDropControls(){
+  document.getElementById('rune-drop-select').addEventListener('change', renderRuneEligible);
+  document.getElementById('rune-force-reset').addEventListener('click', ()=>{
+    const rune = document.getElementById('rune-drop-select').value;
+    if(!rune) return;
+    if(!confirm(`Reset the current cycle for "${rune}"? Everyone who still wants it will become eligible again.`)) return;
+    runeCycle[rune] = [];
+    persistCycle();
+  });
+}
+
+function renderGearForm(){
+  const type = document.getElementById('gear-type').value;
+  const categorySelect = document.getElementById('gear-category');
+  const slotSelect = document.getElementById('gear-slot');
+  if(type==='artifact'){
+    categorySelect.style.display = '';
+    slotSelect.style.display = '';
+    renderGearSlotOptions();
+  } else {
+    categorySelect.style.display = 'none';
+    slotSelect.style.display = 'none';
+  }
+}
+function renderGearSlotOptions(){
+  const category = document.getElementById('gear-category').value;
+  const slotSelect = document.getElementById('gear-slot');
+  const slots = category==='Inner' ? INNER_SLOTS : OUTER_SLOTS;
+  slotSelect.innerHTML = slots.map(s=>`<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join('');
+}
+function renderGearWinnerOptions(){
+  const winnerSelect = document.getElementById('gear-winner');
+  winnerSelect.innerHTML = players.map(p=>`<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+}
+
+async function awardGear(){
+  const type = document.getElementById('gear-type').value;
+  const tier = document.getElementById('gear-tier').value;
+  const winnerId = document.getElementById('gear-winner').value;
+  const player = playerById(winnerId);
+  if(!player){ alert('Add a player first.'); return; }
+  const itemName = document.getElementById('gear-item-name').value.trim();
+  const entry = {
+    id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+    ts: Date.now(), type, tier, itemName, playerId: player.id, playerName: player.name
+  };
+  if(type==='artifact'){
+    entry.category = document.getElementById('gear-category').value;
+    entry.slot = document.getElementById('gear-slot').value;
+  }
+  gearHistory.push(entry);
+  document.getElementById('gear-item-name').value = '';
+  await persistGearHistory();
+}
+
+function setupGearControls(){
+  document.getElementById('gear-type').addEventListener('change', renderGearForm);
+  document.getElementById('gear-category').addEventListener('change', renderGearSlotOptions);
+  document.getElementById('gear-award-btn').addEventListener('click', awardGear);
+}
+
+function describeGearEntry(h){
+  if(h.type==='relic'){
+    return `Relic${h.itemName? ' — '+escapeHtml(h.itemName):''} (${escapeHtml(h.tier)})`;
+  }
+  return `Artifact${h.itemName? ' — '+escapeHtml(h.itemName):''} — ${escapeHtml(h.category)} / ${escapeHtml(h.slot)} (${escapeHtml(h.tier)})`;
+}
+
+function renderHistoryFilterOptions(){
+  const select = document.getElementById('history-player-filter');
+  const prev = select.value;
+  select.innerHTML = '<option value="">All players</option>' +
+    players.map(p=>`<option value="${escapeHtml(p.name)}">${escapeHtml(p.name)}</option>`).join('');
+  if(players.some(p=>p.name===prev) || prev===''){
+    select.value = prev;
+  }
+}
+
+function renderHistory(){
+  renderHistoryFilterOptions();
+  const filterName = document.getElementById('history-player-filter').value;
+
+  const runeList = document.getElementById('rune-history-list');
+  runeList.innerHTML = '';
+  const filteredRuneHistory = filterName ? runeHistory.filter(h=>h.playerName===filterName) : runeHistory;
+  if(filteredRuneHistory.length===0){
+    runeList.innerHTML = `<div class="empty">${filterName ? 'No rune awards for '+escapeHtml(filterName)+' yet.' : 'No rune awards logged yet.'}</div>`;
+  } else {
+    filteredRuneHistory.slice().sort((a,b)=>b.ts-a.ts).forEach(h=>{
+      const d = new Date(h.ts);
+      const row = document.createElement('div');
+      row.className = 'hist-row';
+      row.innerHTML = `<div class="hist-main"><b>${escapeHtml(h.playerName)}</b> won ${escapeHtml(h.rune)} <span class="hist-time">${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span></div>`;
+      const undo = document.createElement('button');
+      undo.className = 'btn ghost small';
+      undo.textContent = 'Undo';
+      undo.addEventListener('click', ()=>{
+        runeHistory = runeHistory.filter(x=>x.id!==h.id);
+        persistRuneHistory();
+      });
+      row.appendChild(undo);
+      runeList.appendChild(row);
+    });
+  }
+
+  const gearList = document.getElementById('gear-history-list');
+  gearList.innerHTML = '';
+  const filteredGearHistory = filterName ? gearHistory.filter(h=>h.playerName===filterName) : gearHistory;
+  if(filteredGearHistory.length===0){
+    gearList.innerHTML = `<div class="empty">${filterName ? 'No relic or artifact awards for '+escapeHtml(filterName)+' yet.' : 'No relic or artifact awards logged yet.'}</div>`;
+  } else {
+    filteredGearHistory.slice().sort((a,b)=>b.ts-a.ts).forEach(h=>{
+      const d = new Date(h.ts);
+      const row = document.createElement('div');
+      row.className = 'hist-row';
+      row.innerHTML = `<div class="hist-main"><b>${escapeHtml(h.playerName)}</b> won ${describeGearEntry(h)} <span class="hist-time">${d.toLocaleDateString()} ${d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</span></div>`;
+      const undo = document.createElement('button');
+      undo.className = 'btn ghost small';
+      undo.textContent = 'Undo';
+      undo.addEventListener('click', ()=>{
+        gearHistory = gearHistory.filter(x=>x.id!==h.id);
+        persistGearHistory();
+      });
+      row.appendChild(undo);
+      gearList.appendChild(row);
+    });
+  }
+}
+
+function setupHistoryFilter(){
+  document.getElementById('history-player-filter').addEventListener('change', renderHistory);
+}
+
+function setupTabs(){
+  document.querySelectorAll('.tab').forEach(tab=>{
+    tab.addEventListener('click', ()=>{
+      document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+      document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('panel-'+tab.dataset.tab).classList.add('active');
+    });
+  });
+}
+
+function setupPlayerControls(){
+  document.getElementById('add-player-btn').addEventListener('click', async ()=>{
+    const input = document.getElementById('new-player-name');
+    const name = input.value.trim();
+    if(!name) return;
+    players.push({ id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()), name });
+    input.value = '';
+    await persistPlayers();
+  });
+}
+
+function setupBackupControls(){
+  const exportBtn = document.getElementById('backup-export-btn');
+  const importFile = document.getElementById('backup-import-file');
+  const status = document.getElementById('backup-status');
+
+  exportBtn.addEventListener('click', ()=>{
+    const backup = { savedAt: new Date().toISOString(), players, runes, wishlist, runeCycle, runeHistory, gearHistory, runeStock, runeStockLower, materialStock };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'ember-loot-ledger-backup.json'; a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  importFile.addEventListener('change', ()=>{
+    const file = importFile.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = async ()=>{
+      try{
+        const data = JSON.parse(reader.result);
+        if(!Array.isArray(data.players) || !Array.isArray(data.runes)){
+          throw new Error('That file doesn\'t look like a ledger backup.');
+        }
+        if(!confirm('Restore from this backup? This overwrites current players, wishlist, cycle state and history for everyone using this ledger.')) return;
+        players = data.players || [];
+        runes = data.runes || defaultRunes();
+        wishlist = data.wishlist || {};
+        runeCycle = data.runeCycle || {};
+        runeHistory = data.runeHistory || [];
+        gearHistory = data.gearHistory || [];
+        runeStock = data.runeStock || {};
+        runeStockLower = data.runeStockLower || {};
+        materialStock = data.materialStock || {};
+        await saveState();
+        renderAll();
+        status.textContent = 'Backup restored.';
+        status.className = 'hint ok';
+      }catch(e){
+        status.textContent = 'Could not restore that file: ' + e.message;
+        status.className = 'hint err';
+      }
+    };
+    reader.readAsText(file);
+    importFile.value = '';
+  });
+}
+
+function setupResetControl(){
+  document.getElementById('reset-btn').addEventListener('click', async ()=>{
+    if(!confirm('This clears players, wishlists, cycle state and history for everyone using this ledger. Continue?')) return;
+    players = [];
+    runes = defaultRunes();
+    wishlist = {};
+    runeCycle = {};
+    runeHistory = [];
+    gearHistory = [];
+    runeStock = {};
+    runeStockLower = {};
+    materialStock = {};
+    await saveState();
+    renderAll();
+  });
+}
+
+function renderAll(){
+  renderRoster();
+  renderWishTable();
+  renderStockTable();
+  renderMaterialsTable();
+  renderRuneDropTab();
+  renderGearWinnerOptions();
+  renderHistory();
+}
+
+async function initMainApp(){
+  setStatus('loading…', null);
+  let loaded;
+  try{
+    loaded = await loadState();
+  }catch(e){
+    loaded = null;
+  }
+  if(!loaded || loaded.unauthorized){
+    showRequestAccessScreen();
+    return;
+  }
+  players = loaded.players || [];
+  runes = (loaded.runes && loaded.runes.length) ? loaded.runes : defaultRunes();
+  wishlist = loaded.wishlist || {};
+  runeCycle = loaded.runeCycle || {};
+  runeHistory = loaded.runeHistory || [];
+  gearHistory = loaded.gearHistory || [];
+  runeStock = loaded.runeStock || {};
+  runeStockLower = loaded.runeStockLower || {};
+  materialStock = loaded.materialStock || {};
+
+  document.getElementById('main-app').style.display = '';
+  setupTabs();
+  setupHistoryFilter();
+  setupPlayerControls();
+  setupRuneImportExport();
+  setupRuneDropControls();
+  setupGearControls();
+  setupBackupControls();
+  setupResetControl();
+  renderGearForm();
+  renderAll();
+  setStatus('synced', true);
+}
+
+function showRequestAccessScreen(){
+  document.getElementById('main-app').style.display = 'none';
+  document.getElementById('admin-screen').style.display = 'none';
+  document.getElementById('request-access-screen').style.display = '';
+}
+
+function setupRequestAccessScreen(){
+  const btn = document.getElementById('request-access-btn');
+  const status = document.getElementById('request-status');
+  btn.addEventListener('click', async ()=>{
+    const nameInput = document.getElementById('request-name-input');
+    const name = nameInput.value.trim();
+    if(!name){ status.textContent = 'Enter your character name first.'; status.className = 'hint err'; return; }
+    btn.disabled = true;
+    try{
+      const res = await fetch('/api/request-access', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ name })
+      });
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error || 'Request failed');
+      status.textContent = data.note || 'Request sent — ask your guild admin to approve you, then use the link they send back.';
+      status.className = 'hint ok';
+      nameInput.value = '';
+    }catch(e){
+      status.textContent = 'Could not send request: ' + e.message;
+      status.className = 'hint err';
+    }
+    btn.disabled = false;
+  });
+}
+
+function setupAdminScreen(){
+  const loginBtn = document.getElementById('admin-login-btn');
+  const status = document.getElementById('admin-status');
+  let adminPassword = '';
+  let authState = { pendingRequests: [], approvedUsers: [] };
+
+  async function refreshAdminState(){
+    try{
+      const res = await fetch('/api/admin/state?password=' + encodeURIComponent(adminPassword));
+      const data = await res.json();
+      if(!res.ok) throw new Error(data.error || 'Failed to load');
+      authState = data;
+      renderAdminLists();
+    }catch(e){
+      status.textContent = 'Could not load requests: ' + e.message;
+      status.className = 'hint err';
+    }
+  }
+
+  function renderAdminLists(){
+    const pendingEl = document.getElementById('admin-pending-list');
+    const approvedEl = document.getElementById('admin-approved-list');
+
+    pendingEl.innerHTML = authState.pendingRequests.length===0
+      ? '<div class="empty">No pending requests.</div>' : '';
+    authState.pendingRequests.forEach(r=>{
+      const row = document.createElement('div');
+      row.className = 'admin-row';
+      row.innerHTML = `<div><div class="admin-name">${escapeHtml(r.name)}</div><div class="admin-meta">requested ${new Date(r.requestedAt).toLocaleString()}</div></div>`;
+      const actions = document.createElement('div');
+      const approveBtn = document.createElement('button');
+      approveBtn.className = 'btn small';
+      approveBtn.textContent = 'Approve';
+      approveBtn.addEventListener('click', async ()=>{
+        approveBtn.disabled = true;
+        try{
+          const res = await fetch('/api/admin/approve', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ id: r.id, password: adminPassword })
+          });
+          const data = await res.json();
+          if(!res.ok) throw new Error(data.error || 'Approve failed');
+          // Update local state directly from the response rather than re-fetching —
+          // storage backends like GitHub can briefly return stale data on an
+          // immediate read right after a write.
+          authState.pendingRequests = authState.pendingRequests.filter(x=>x.id!==r.id);
+          authState.approvedUsers.push({ id: r.id, name: data.name, token: data.token, approvedAt: Date.now() });
+          renderAdminLists();
+          const link = `${location.origin}${location.pathname}?token=${data.token}`;
+          status.innerHTML = `Approved <b>${escapeHtml(data.name)}</b>. Send them this link:<div class="admin-link-box">${escapeHtml(link)}</div>`;
+          status.className = 'hint ok';
+        }catch(e){
+          status.textContent = 'Approve failed: ' + e.message;
+          status.className = 'hint err';
+          approveBtn.disabled = false;
+        }
+      });
+      const denyBtn = document.createElement('button');
+      denyBtn.className = 'btn ghost small';
+      denyBtn.style.marginLeft = '6px';
+      denyBtn.textContent = 'Deny';
+      denyBtn.addEventListener('click', async ()=>{
+        denyBtn.disabled = true;
+        try{
+          const res = await fetch('/api/admin/deny', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ id: r.id, password: adminPassword })
+          });
+          const data = await res.json();
+          if(!res.ok) throw new Error(data.error || 'Deny failed');
+          authState.pendingRequests = authState.pendingRequests.filter(x=>x.id!==r.id);
+          renderAdminLists();
+          status.textContent = `Denied ${r.name}'s request.`;
+          status.className = 'hint ok';
+        }catch(e){
+          status.textContent = 'Deny failed: ' + e.message;
+          status.className = 'hint err';
+          denyBtn.disabled = false;
+        }
+      });
+      actions.appendChild(approveBtn);
+      actions.appendChild(denyBtn);
+      row.appendChild(actions);
+      pendingEl.appendChild(row);
+    });
+
+    approvedEl.innerHTML = authState.approvedUsers.length===0
+      ? '<div class="empty">No approved users yet.</div>' : '';
+    authState.approvedUsers.forEach(u=>{
+      const row = document.createElement('div');
+      row.className = 'admin-row';
+      row.innerHTML = `<div><div class="admin-name">${escapeHtml(u.name)}</div><div class="admin-meta">approved ${new Date(u.approvedAt).toLocaleString()}</div></div>`;
+      const revokeBtn = document.createElement('button');
+      revokeBtn.className = 'btn danger small';
+      revokeBtn.textContent = 'Revoke';
+      revokeBtn.addEventListener('click', async ()=>{
+        if(!confirm(`Revoke access for ${u.name}?`)) return;
+        revokeBtn.disabled = true;
+        try{
+          const res = await fetch('/api/admin/revoke', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ id: u.id, password: adminPassword })
+          });
+          const data = await res.json();
+          if(!res.ok) throw new Error(data.error || 'Revoke failed');
+          authState.approvedUsers = authState.approvedUsers.filter(x=>x.id!==u.id);
+          renderAdminLists();
+          status.textContent = `Revoked access for ${u.name}.`;
+          status.className = 'hint ok';
+        }catch(e){
+          status.textContent = 'Revoke failed: ' + e.message;
+          status.className = 'hint err';
+          revokeBtn.disabled = false;
+        }
+      });
+      row.appendChild(revokeBtn);
+      approvedEl.appendChild(row);
+    });
+  }
+
+  loginBtn.addEventListener('click', ()=>{
+    adminPassword = document.getElementById('admin-password-input').value;
+    refreshAdminState();
+  });
+}
+
+function boot(){
+  const params = new URLSearchParams(location.search);
+
+  if(params.get('admin')){
+    document.getElementById('admin-screen').style.display = '';
+    setupAdminScreen();
+    return;
+  }
+
+  const urlToken = params.get('token');
+  if(urlToken){
+    localStorage.setItem('emberLootToken', urlToken);
+    params.delete('token');
+    const cleanUrl = location.pathname + (params.toString() ? '?' + params.toString() : '');
+    history.replaceState({}, '', cleanUrl);
+  }
+  authToken = localStorage.getItem('emberLootToken') || null;
+
+  setupRequestAccessScreen();
+  initMainApp();
+}
+
+boot();
+</script>
+</body>
+</html>
