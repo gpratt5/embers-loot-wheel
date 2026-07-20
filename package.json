@@ -4,7 +4,7 @@
   "description": "Suicide Kings style loot priority wheels (Gear + Rune) for Embers Adrift raid teams",
   "main": "server.js",
   "engines": {
-    "node": ">=18.0.0"
+    "node": "22.x"
   },
   "scripts": {
     "start": "node server.js"

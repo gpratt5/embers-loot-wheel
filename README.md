@@ -77,6 +77,23 @@ ADMIN_PASSWORD=test123 npm start
 
 Then open `http://localhost:3000`. Data is stored in `./data/wheels.db` locally.
 
+## Troubleshooting
+
+**Build fails with `gyp ERR!` / `better-sqlite3.target.mk` errors**
+
+`better-sqlite3` ships prebuilt binaries for stable Node LTS versions. If Render's
+build image picks a very new/unsupported Node version, npm falls back to compiling
+the native addon from source, which can fail. This project pins Node to `22.x` via
+both `package.json` (`engines.node`) and a `.node-version` file, which should make
+Render use a supported version automatically.
+
+If you still see this error:
+1. In your Render service → **Environment**, add `NODE_VERSION` = `22.19.0` (or check
+   [Render's Node version docs](https://render.com/docs/node-version) for the latest
+   supported 22.x patch version) to force it explicitly.
+2. Go to **Manual Deploy** → **Clear build cache & deploy**, since a stale cached
+   build can keep reusing the broken compile.
+
 ## Backups (optional but recommended)
 
 Even with a persistent disk, it's good practice to back up occasionally. You can
