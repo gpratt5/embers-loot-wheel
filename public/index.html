@@ -1,1 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Embers Adrift — Loot Wheels</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Spectral+SC:wght@600;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg: #14100d;
+    --panel: #1d1712;
+    --panel-2: #241c15;
+    --hairline: #372c22;
+    --text: #ece5d8;
+    --text-dim: #a89b8a;
+    --ember: #d1461f;
+    --ember-glow: #ff8a4c;
+    --rune: #3f9e9a;
+    --rune-glow: #7fe3d4;
+    --gold: #e8b34c;
+    --danger: #b4402f;
+    --radius-node: 46px;
+  }
+  *{ box-sizing: border-box; }
+  html,body{ margin:0; padding:0; }
+  body{
+    background:
+      radial-gradient(1200px 600px at 50% -10%, rgba(209,70,31,0.08), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+  }
+  .wrap{ max-width: 880px; margin: 0 auto; padding: 28px 20px 80px; }
 
+  header.top{
+    display:flex; align-items:baseline; justify-content:space-between;
+    gap: 16px; flex-wrap: wrap; margin-bottom: 22px;
+  }
+  h1{
+    font-family: 'Spectral SC', serif;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+    font-size: clamp(1.4rem, 3vw, 2rem);
+    margin: 0;
+    color: var(--text);
+  }
+  h1 span{ color: var(--ember-glow); }
+  .tagline{ color: var(--text-dim); font-size: 0.85rem; margin-top: 4px; }
+
+  #admin-badge{
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.72rem;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--hairline);
+    color: var(--text-dim);
+    cursor: pointer;
+    background: var(--panel);
+    transition: border-color .2s, color .2s;
+  }
+  #admin-badge:hover{ border-color: var(--gold); color: var(--gold); }
+  #admin-badge.active{ border-color: var(--gold); color: var(--gold); }
+
+  /* Tabs */
+  .tabs{ display:flex; gap: 8px; margin-bottom: 22px; }
+  .tab{
+    flex: 1;
+    padding: 12px 16px;
+    text-align: center;
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    border-radius: 10px;
+    cursor: pointer;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    transition: all .2s;
+  }
+  .tab.gear.selected{ border-color: var(--ember); color: var(--ember-glow); box-shadow: 0 0 0 1px var(--ember) inset; }
+  .tab.rune.selected{ border-color: var(--rune); color: var(--rune-glow); box-shadow: 0 0 0 1px var(--rune) inset; }
+  .tab:hover{ color: var(--text); }
+
+  /* Wheel visual */
+  .wheel-stage{
+    position: relative;
+    width: 100%;
+    max-width: 460px;
+    aspect-ratio: 1 / 1;
+    margin: 0 auto 28px;
+  }
+  .wheel-ring-svg{ position:absolute; inset:0; width:100%; height:100%; }
+  .wheel-nodes{ position:absolute; inset:0; }
+  .node{
+    position:absolute; top:50%; left:50%; width:0; height:0;
+    transition: transform 0.7s cubic-bezier(.3,.9,.3,1);
+  }
+  .node-inner{
+    position:absolute;
+    transform: translate(-50%,-50%);
+    width: 64px; height: 64px;
+    border-radius: 50%;
+    display:flex; align-items:center; justify-content:center;
+    background: var(--panel-2);
+    border: 1px solid var(--hairline);
+    font-family:'JetBrains Mono',monospace;
+    font-size: 0.62rem;
+    font-weight: 700;
+    text-align:center;
+    color: var(--text-dim);
+    padding: 4px;
+    line-height: 1.1;
+    transition: all .3s;
+  }
+  .node.top .node-inner.gear{
+    border-color: var(--ember);
+    color: var(--ember-glow);
+    box-shadow: 0 0 18px rgba(255,138,76,0.45), 0 0 0 2px rgba(209,70,31,0.5) inset;
+    width: 76px; height: 76px;
+  }
+  .node.top .node-inner.rune{
+    border-color: var(--rune);
+    color: var(--rune-glow);
+    box-shadow: 0 0 18px rgba(127,227,212,0.45), 0 0 0 2px rgba(63,158,154,0.5) inset;
+    width: 76px; height: 76px;
+  }
+  .node-inner .n{ display:block; opacity: 0.6; font-size: 0.58rem; margin-bottom:2px; }
+  .center-label{
+    position:absolute; top:50%; left:50%; transform: translate(-50%,-50%);
+    text-align:center; pointer-events:none;
+  }
+  .center-label .u{ font-family:'JetBrains Mono',monospace; font-size:0.62rem; color: var(--text-dim); letter-spacing:0.1em; text-transform:uppercase;}
+  .center-label .name{ font-family:'Spectral SC',serif; font-weight:800; font-size:1.15rem; margin-top:4px; max-width:140px; }
+  .center-label.gear .name{ color: var(--ember-glow); }
+  .center-label.rune .name{ color: var(--rune-glow); }
+
+  /* List */
+  .list-panel{
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+  .list-head{
+    padding: 12px 16px;
+    font-family:'JetBrains Mono',monospace;
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .row{
+    display:flex; align-items:center; gap: 12px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .row:last-child{ border-bottom: none; }
+  .row .pos{
+    font-family:'JetBrains Mono',monospace;
+    font-weight:700; font-size:0.85rem;
+    color: var(--text-dim);
+    width: 28px; flex-shrink:0;
+  }
+  .row.first .pos{ color: var(--gold); }
+  .row .name{ flex:1; font-weight:600; }
+  .row.first .name::after{
+    content: "up next";
+    margin-left: 8px;
+    font-family:'JetBrains Mono',monospace;
+    font-size: 0.62rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 2px 7px;
+    border-radius: 999px;
+    vertical-align: middle;
+  }
+  .row.first.gear .name::after{ color: var(--ember-glow); background: rgba(209,70,31,0.15); }
+  .row.first.rune .name::after{ color: var(--rune-glow); background: rgba(63,158,154,0.15); }
+
+  .row .controls{ display:flex; gap:6px; flex-shrink:0; }
+  button.icon{
+    background: var(--panel-2);
+    border: 1px solid var(--hairline);
+    color: var(--text-dim);
+    border-radius: 7px;
+    padding: 5px 9px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    font-family: 'JetBrains Mono', monospace;
+    transition: all .15s;
+  }
+  button.icon:hover{ color: var(--text); border-color: var(--text-dim); }
+  button.award.gear:hover{ border-color: var(--ember); color: var(--ember-glow); }
+  button.award.rune:hover{ border-color: var(--rune); color: var(--rune-glow); }
+  button.remove:hover{ border-color: var(--danger); color: #ff8b7a; }
+
+  .empty{ padding: 26px 16px; color: var(--text-dim); font-size: 0.9rem; text-align:center; }
+
+  .add-form{
+    display:flex; gap: 8px; padding: 12px 16px;
+  }
+  .add-form input{
+    flex:1;
+    background: var(--panel-2);
+    border: 1px solid var(--hairline);
+    color: var(--text);
+    padding: 9px 12px;
+    border-radius: 8px;
+    font-family: 'Inter', sans-serif;
+    font-size: 0.9rem;
+  }
+  .add-form input:focus{ outline:none; border-color: var(--gold); }
+  .add-form button{
+    background: var(--gold);
+    color: #23180a;
+    border:none;
+    padding: 9px 16px;
+    border-radius: 8px;
+    font-weight:700;
+    cursor:pointer;
+    font-size: 0.85rem;
+  }
+  .add-form button:hover{ filter: brightness(1.08); }
+
+  /* Login modal */
+  .modal-backdrop{
+    position: fixed; inset:0; background: rgba(0,0,0,0.6);
+    display:flex; align-items:center; justify-content:center;
+    z-index: 50;
+  }
+  .modal-backdrop.hidden{ display:none; }
+  .modal{
+    background: var(--panel);
+    border: 1px solid var(--hairline);
+    border-radius: 14px;
+    padding: 24px;
+    width: 320px;
+    max-width: 90vw;
+  }
+  .modal h2{ font-family:'Spectral SC',serif; margin: 0 0 6px; font-size: 1.1rem; }
+  .modal p{ color: var(--text-dim); font-size: 0.82rem; margin: 0 0 16px; }
+  .modal input{
+    width:100%;
+    background: var(--panel-2);
+    border: 1px solid var(--hairline);
+    color: var(--text);
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    margin-bottom: 12px;
+  }
+  .modal input:focus{ outline:none; border-color: var(--gold); }
+  .modal-buttons{ display:flex; gap:8px; justify-content:flex-end; }
+  .modal-buttons button{
+    border:none; border-radius: 8px; padding: 9px 14px;
+    font-weight: 700; cursor:pointer; font-size: 0.82rem;
+  }
+  .modal-buttons .cancel{ background: transparent; color: var(--text-dim); border: 1px solid var(--hairline); }
+  .modal-buttons .confirm{ background: var(--gold); color: #23180a; }
+  .modal-error{ color: #ff8b7a; font-size: 0.78rem; margin: -6px 0 12px; min-height: 1em; }
+
+  footer{
+    text-align:center; margin-top: 36px;
+    color: var(--text-dim); font-size: 0.72rem;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  a{ color: var(--text-dim); }
+
+  @media (max-width: 520px){
+    .wheel-stage{ display:none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Embers Adrift <span>Loot Wheels</span></h1>
+      <div class="tagline">Suicide-Kings priority order — win it, and you go to the back of the line.</div>
+    </div>
+    <div id="admin-badge">Viewing only</div>
+  </header>
+
+  <div class="tabs">
+    <div class="tab gear selected" data-wheel="gear">⚒ Gear Wheel</div>
+    <div class="tab rune" data-wheel="rune">✦ Rune Wheel</div>
+  </div>
+
+  <div class="wheel-stage">
+    <svg class="wheel-ring-svg" viewBox="0 0 400 400">
+      <circle cx="200" cy="200" r="170" fill="none" stroke="#372c22" stroke-width="1"/>
+      <circle cx="200" cy="200" r="170" id="progress-ring" fill="none" stroke="var(--ember)" stroke-width="2" stroke-dasharray="4 10" opacity="0.5"/>
+    </svg>
+    <div class="wheel-nodes" id="nodes"></div>
+    <div class="center-label gear" id="center-label">
+      <div class="u">Up Next</div>
+      <div class="name" id="center-name">—</div>
+    </div>
+  </div>
+
+  <div class="list-panel">
+    <div class="list-head" id="list-head">Gear priority order</div>
+    <div id="list-body"></div>
+    <div class="add-form hidden" id="add-form">
+      <input type="text" id="add-input" placeholder="Add raider name…" maxlength="40" />
+      <button id="add-btn">Add</button>
+    </div>
+  </div>
+
+  <footer>Anyone with this link can view. Editing requires the admin password.</footer>
+</div>
+
+<div class="modal-backdrop hidden" id="modal">
+  <div class="modal">
+    <h2>Admin login</h2>
+    <p>Enter the admin password to add, remove, or rotate raiders on the wheels.</p>
+    <input type="password" id="pw-input" placeholder="Password" />
+    <div class="modal-error" id="pw-error"></div>
+    <div class="modal-buttons">
+      <button class="cancel" id="pw-cancel">Cancel</button>
+      <button class="confirm" id="pw-confirm">Log in</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentWheel = 'gear';
+let isAdmin = false;
+let cache = { gear: [], rune: [] };
+
+const nodesEl = document.getElementById('nodes');
+const listBody = document.getElementById('list-body');
+const listHead = document.getElementById('list-head');
+const centerName = document.getElementById('center-name');
+const centerLabel = document.getElementById('center-label');
+const adminBadge = document.getElementById('admin-badge');
+const addForm = document.getElementById('add-form');
+const modal = document.getElementById('modal');
+const pwInput = document.getElementById('pw-input');
+const pwError = document.getElementById('pw-error');
+
+async function api(path, opts) {
+  const res = await fetch(path, {
+    method: 'GET',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    ...opts
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || ('Request failed: ' + res.status));
+  }
+  return res.json();
+}
+
+async function checkSession() {
+  try {
+    const s = await api('/api/session');
+    isAdmin = !!s.isAdmin;
+  } catch (e) { isAdmin = false; }
+  renderAdminState();
+}
+
+function renderAdminState() {
+  adminBadge.textContent = isAdmin ? 'Admin (log out)' : 'Viewing only';
+  adminBadge.classList.toggle('active', isAdmin);
+  addForm.classList.toggle('hidden', !isAdmin);
+  addForm.style.display = isAdmin ? 'flex' : 'none';
+  render();
+}
+
+async function loadWheel(wheel) {
+  cache[wheel] = await api('/api/wheel/' + wheel);
+  if (wheel === currentWheel) render();
+}
+
+async function loadAll() {
+  await Promise.all(['gear', 'rune'].map(loadWheel));
+}
+
+function render() {
+  const players = cache[currentWheel] || [];
+  const theme = currentWheel;
+
+  listHead.textContent = (theme === 'gear' ? 'Gear' : 'Rune') + ' priority order';
+  centerLabel.className = 'center-label ' + theme;
+  centerName.textContent = players.length ? players[0].name : '—';
+
+  // Circular wheel nodes
+  nodesEl.innerHTML = '';
+  const n = players.length;
+  const radius = 150;
+  players.forEach((p, i) => {
+    const angle = (360 / Math.max(n, 1)) * i - 90; // start at top
+    const node = document.createElement('div');
+    node.className = 'node' + (i === 0 ? ' top' : '');
+    node.style.transform = `rotate(${angle}deg) translate(${radius}px) rotate(${-angle}deg)`;
+    const inner = document.createElement('div');
+    inner.className = 'node-inner ' + theme;
+    inner.innerHTML = `<span class="n">#${i + 1}</span>${escapeHtml(p.name)}`;
+    node.appendChild(inner);
+    nodesEl.appendChild(node);
+  });
+
+  // List
+  listBody.innerHTML = '';
+  if (!players.length) {
+    listBody.innerHTML = '<div class="empty">No raiders on this wheel yet.' +
+      (isAdmin ? ' Add one below.' : '') + '</div>';
+    return;
+  }
+  players.forEach((p, i) => {
+    const row = document.createElement('div');
+    row.className = 'row' + (i === 0 ? ' first ' + theme : '');
+    row.innerHTML = `
+      <div class="pos">#${i + 1}</div>
+      <div class="name">${escapeHtml(p.name)}</div>
+      <div class="controls"></div>
+    `;
+    if (isAdmin) {
+      const controls = row.querySelector('.controls');
+
+      const awardBtn = document.createElement('button');
+      awardBtn.className = 'icon award ' + theme;
+      awardBtn.textContent = 'Award → back of line';
+      awardBtn.onclick = () => doAction('award', p.id);
+      controls.appendChild(awardBtn);
+
+      const upBtn = document.createElement('button');
+      upBtn.className = 'icon';
+      upBtn.textContent = '↑';
+      upBtn.disabled = i === 0;
+      upBtn.onclick = () => doAction('move', p.id, { direction: 'up' });
+      controls.appendChild(upBtn);
+
+      const downBtn = document.createElement('button');
+      downBtn.className = 'icon';
+      downBtn.textContent = '↓';
+      downBtn.disabled = i === players.length - 1;
+      downBtn.onclick = () => doAction('move', p.id, { direction: 'down' });
+      controls.appendChild(downBtn);
+
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'icon remove';
+      removeBtn.textContent = 'Remove';
+      removeBtn.onclick = () => {
+        if (confirm(`Remove ${p.name} from the ${theme} wheel?`)) doAction('remove', p.id);
+      };
+      controls.appendChild(removeBtn);
+    }
+    listBody.appendChild(row);
+  });
+}
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+async function doAction(action, id, extra) {
+  try {
+    cache[currentWheel] = await api(`/api/wheel/${currentWheel}/${action}`, {
+      method: 'POST',
+      body: JSON.stringify({ id, ...(extra || {}) })
+    });
+    render();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+// Tabs
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('selected'));
+    tab.classList.add('selected');
+    currentWheel = tab.dataset.wheel;
+    render();
+  });
+});
+
+// Add form
+document.getElementById('add-btn').addEventListener('click', submitAdd);
+document.getElementById('add-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') submitAdd();
+});
+async function submitAdd() {
+  const input = document.getElementById('add-input');
+  const name = input.value.trim();
+  if (!name) return;
+  try {
+    cache[currentWheel] = await api(`/api/wheel/${currentWheel}/add`, {
+      method: 'POST',
+      body: JSON.stringify({ name })
+    });
+    input.value = '';
+    render();
+  } catch (e) {
+    alert(e.message);
+  }
+}
+
+// Admin badge / login modal
+adminBadge.addEventListener('click', async () => {
+  if (isAdmin) {
+    await api('/api/logout', { method: 'POST' });
+    isAdmin = false;
+    renderAdminState();
+  } else {
+    pwError.textContent = '';
+    pwInput.value = '';
+    modal.classList.remove('hidden');
+    pwInput.focus();
+  }
+});
+document.getElementById('pw-cancel').addEventListener('click', () => modal.classList.add('hidden'));
+document.getElementById('pw-confirm').addEventListener('click', submitLogin);
+pwInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitLogin(); });
+
+async function submitLogin() {
+  try {
+    await api('/api/login', { method: 'POST', body: JSON.stringify({ password: pwInput.value }) });
+    isAdmin = true;
+    modal.classList.add('hidden');
+    renderAdminState();
+  } catch (e) {
+    pwError.textContent = e.message;
+  }
+}
+
+(async function init() {
+  await checkSession();
+  await loadAll();
+})();
+</script>
+</body>
+</html>
