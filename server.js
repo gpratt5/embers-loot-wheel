@@ -1,259 +1,168 @@
-const http = require('http');
-const fs = require('fs');
+const express = require('express');
+const session = require('express-session');
+const Database = require('better-sqlite3');
 const path = require('path');
+const fs = require('fs');
 const crypto = require('crypto');
 
-const PORT = process.env.PORT || 3939;
-const DATA_DIR = process.env.DATA_DIR || __dirname; // point this at a mounted persistent disk on paid Render plans
-const DATA_FILE = path.join(DATA_DIR, 'data.json'); // used when GITHUB_TOKEN isn't set
-const INDEX_FILE = path.join(__dirname, 'index.html');
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
-const GITHUB_REPO = process.env.GITHUB_REPO || '';       // e.g. "yourname/ember-loot-ledger-data"
-const GITHUB_PATH = process.env.GITHUB_DATA_PATH || 'ledger-data.json';
-const GITHUB_BRANCH = process.env.GITHUB_BRANCH || 'main';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
-const USE_GITHUB = Boolean(GITHUB_TOKEN && GITHUB_REPO);
+// Data directory: on Render this should be the mount path of your persistent Disk
+// (see render.yaml / README). Locally it just falls back to ./data
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+const DB_PATH = path.join(DATA_DIR, 'wheels.db');
 
-if(!ADMIN_PASSWORD){
-  console.warn('WARNING: ADMIN_PASSWORD is not set — the admin panel will refuse all requests until you set it.');
-}
-if(!USE_GITHUB){
-  console.warn(`WARNING: GITHUB_TOKEN / GITHUB_REPO not set — using local storage at ${DATA_FILE}. This is fine if DATA_DIR points at a persistent disk (paid Render plans); on ephemeral filesystems (e.g. Render's free tier) it will not survive a restart or redeploy.`);
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+
+if (!ADMIN_PASSWORD) {
+  console.warn('WARNING: ADMIN_PASSWORD is not set. Set it in Render env vars or nobody will be able to edit the wheels.');
 }
 
-function defaultLedger(){
-  return { players: [], runes: [], wishlist: {}, runeCycle: {}, runeHistory: [], gearHistory: [], runeStock: {}, runeStockLower: {}, materialStock: {} };
-}
-function defaultAuth(){
-  return { pendingRequests: [], approvedUsers: [] };
-}
-function defaultStore(){
-  return { ledger: defaultLedger(), auth: defaultAuth() };
-}
-function normalizeStore(store){
-  if(!store || typeof store !== 'object') store = {};
-  if(!store.ledger) store.ledger = defaultLedger();
-  if(!store.auth) store.auth = defaultAuth();
-  if(!Array.isArray(store.auth.pendingRequests)) store.auth.pendingRequests = [];
-  if(!Array.isArray(store.auth.approvedUsers)) store.auth.approvedUsers = [];
-  return store;
-}
+const db = new Database(DB_PATH);
+db.pragma('journal_mode = WAL');
+db.exec(`
+  CREATE TABLE IF NOT EXISTS players (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    wheel TEXT NOT NULL CHECK(wheel IN ('gear','rune')),
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+`);
 
-// ---------- GitHub-backed storage (secret token stays on the server) ----------
-const GITHUB_API = 'https://api.github.com';
-function githubHeaders(extra){
-  return Object.assign({
-    'Authorization': `Bearer ${GITHUB_TOKEN}`,
-    'Accept': 'application/vnd.github+json',
-    'User-Agent': 'ember-loot-ledger'
-  }, extra || {});
-}
+const WHEELS = ['gear', 'rune'];
 
-async function githubReadStore(){
-  const url = `${GITHUB_API}/repos/${GITHUB_REPO}/contents/${encodeURIComponent(GITHUB_PATH)}?ref=${encodeURIComponent(GITHUB_BRANCH)}`;
-  const res = await fetch(url, { headers: githubHeaders() });
-  if(res.status === 404){
-    return { store: defaultStore(), sha: null };
+app.use(express.json());
+app.set('trust proxy', 1); // required behind Render's proxy for secure cookies
+app.use(session({
+  secret: SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    maxAge: 1000 * 60 * 60 * 24 * 90, // 90 days
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true
   }
-  if(!res.ok){
-    throw new Error(`GitHub read failed (${res.status}): ${await res.text()}`);
-  }
-  const json = await res.json();
-  const content = Buffer.from(json.content, 'base64').toString('utf8');
-  let store;
-  try{ store = JSON.parse(content); }catch(e){ store = defaultStore(); }
-  return { store: normalizeStore(store), sha: json.sha };
+}));
+app.use(express.static(path.join(__dirname, 'public')));
+
+function requireAdmin(req, res, next) {
+  if (req.session && req.session.isAdmin) return next();
+  return res.status(401).json({ error: 'Not authorized' });
 }
 
-async function githubWriteStore(store, message){
-  const { sha } = await githubReadStore(); // refetch sha right before writing to shrink the race window
-  const url = `${GITHUB_API}/repos/${GITHUB_REPO}/contents/${encodeURIComponent(GITHUB_PATH)}`;
-  const body = {
-    message: message || 'Update loot ledger data',
-    content: Buffer.from(JSON.stringify(store, null, 2), 'utf8').toString('base64'),
-    branch: GITHUB_BRANCH
-  };
-  if(sha) body.sha = sha;
-  const res = await fetch(url, {
-    method: 'PUT',
-    headers: githubHeaders({ 'Content-Type': 'application/json' }),
-    body: JSON.stringify(body)
+function validWheel(w) {
+  return WHEELS.includes(w);
+}
+
+function getWheel(wheel) {
+  return db.prepare('SELECT id, name, position FROM players WHERE wheel = ? ORDER BY position ASC').all(wheel);
+}
+
+function renumberAndSave(wheel, orderedList) {
+  const update = db.prepare('UPDATE players SET position = ? WHERE id = ?');
+  const tx = db.transaction((list) => {
+    list.forEach((p, i) => update.run(i, p.id));
   });
-  if(!res.ok){
-    throw new Error(`GitHub write failed (${res.status}): ${await res.text()}`);
+  tx(orderedList);
+}
+
+// ---------- Auth ----------
+
+app.post('/api/login', (req, res) => {
+  const { password } = req.body || {};
+  if (!ADMIN_PASSWORD) {
+    return res.status(500).json({ error: 'Server missing ADMIN_PASSWORD configuration' });
   }
-}
-
-// ---------- Local file fallback (dev/testing only) ----------
-function ensureDataDir(){
-  try{ fs.mkdirSync(DATA_DIR, { recursive: true }); }catch(e){ /* already exists or not creatable; read/write below will surface real errors */ }
-}
-function localReadStore(){
-  try{
-    const raw = fs.readFileSync(DATA_FILE, 'utf8');
-    return normalizeStore(JSON.parse(raw));
-  }catch(e){
-    ensureDataDir();
-    const fresh = defaultStore();
-    fs.writeFileSync(DATA_FILE, JSON.stringify(fresh, null, 2));
-    return fresh;
+  if (typeof password === 'string' && password === ADMIN_PASSWORD) {
+    req.session.isAdmin = true;
+    return res.json({ ok: true });
   }
-}
-function localWriteStore(store){
-  ensureDataDir();
-  fs.writeFileSync(DATA_FILE, JSON.stringify(store, null, 2));
-}
-
-async function readStore(){
-  return USE_GITHUB ? (await githubReadStore()).store : localReadStore();
-}
-async function writeStore(store, message){
-  if(USE_GITHUB) await githubWriteStore(store, message);
-  else localWriteStore(store);
-}
-
-// ---------- helpers ----------
-function sendJson(res, status, obj){
-  res.writeHead(status, {'Content-Type': 'application/json'});
-  res.end(JSON.stringify(obj));
-}
-function readBody(req){
-  return new Promise((resolve, reject)=>{
-    let body = '';
-    req.on('data', c=>{ body += c; });
-    req.on('end', ()=>{
-      if(!body){ resolve({}); return; }
-      try{ resolve(JSON.parse(body)); }catch(e){ reject(new Error('Invalid JSON body')); }
-    });
-    req.on('error', reject);
-  });
-}
-function getToken(req, url){
-  const authHeader = req.headers['authorization'];
-  if(authHeader && authHeader.startsWith('Bearer ')) return authHeader.slice(7);
-  return url.searchParams.get('token') || '';
-}
-function findApprovedByToken(store, token){
-  if(!token) return null;
-  return store.auth.approvedUsers.find(u => u.token === token) || null;
-}
-function checkAdmin(password){
-  return Boolean(ADMIN_PASSWORD) && password === ADMIN_PASSWORD;
-}
-
-const server = http.createServer(async (req, res) => {
-  let url;
-  try{
-    const sanitizedUrl = req.url.replace(/\/{2,}/g, '/');
-    url = new URL(sanitizedUrl, `http://${req.headers.host}`);
-    if(url.pathname.length > 1){
-      url.pathname = url.pathname.replace(/\/$/, '') || '/';
-    }
-  }
-  catch(e){ res.writeHead(400); res.end('Bad request'); return; }
-
-  if(req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')){
-    fs.readFile(INDEX_FILE, (err, content) => {
-      if(err){ res.writeHead(500); res.end('Could not load index.html: ' + err.message); return; }
-      res.writeHead(200, {'Content-Type': 'text/html'});
-      res.end(content);
-    });
-    return;
-  }
-
-  try{
-    if(url.pathname === '/api/data' && req.method === 'GET'){
-      const store = await readStore();
-      const user = findApprovedByToken(store, getToken(req, url));
-      if(!user){ sendJson(res, 401, {error:'Not authorized'}); return; }
-      sendJson(res, 200, store.ledger);
-      return;
-    }
-
-    if(url.pathname === '/api/data' && req.method === 'POST'){
-      const body = await readBody(req);
-      const store = await readStore();
-      const user = findApprovedByToken(store, getToken(req, url));
-      if(!user){ sendJson(res, 401, {error:'Not authorized'}); return; }
-      store.ledger = body;
-      await writeStore(store, `Ledger update by ${user.name}`);
-      sendJson(res, 200, {ok:true});
-      return;
-    }
-
-    if(url.pathname === '/api/whoami' && req.method === 'GET'){
-      const store = await readStore();
-      const user = findApprovedByToken(store, getToken(req, url));
-      sendJson(res, 200, { approved: Boolean(user), name: user ? user.name : null });
-      return;
-    }
-
-    if(url.pathname === '/api/request-access' && req.method === 'POST'){
-      const body = await readBody(req);
-      const name = (body.name || '').trim();
-      if(!name){ sendJson(res, 400, {error:'Name is required'}); return; }
-      const store = await readStore();
-      const dupe = store.auth.pendingRequests.some(r=>r.name.toLowerCase()===name.toLowerCase())
-        || store.auth.approvedUsers.some(u=>u.name.toLowerCase()===name.toLowerCase());
-      if(dupe){ sendJson(res, 200, {ok:true, note:'A request or approval for this name already exists.'}); return; }
-      store.auth.pendingRequests.push({ id: crypto.randomUUID(), name, requestedAt: Date.now() });
-      await writeStore(store, `Access request from ${name}`);
-      sendJson(res, 200, {ok:true});
-      return;
-    }
-
-    if(url.pathname === '/api/admin/state' && req.method === 'GET'){
-      if(!checkAdmin(url.searchParams.get('password'))){ sendJson(res, 401, {error:'Bad admin password'}); return; }
-      const store = await readStore();
-      sendJson(res, 200, store.auth);
-      return;
-    }
-
-    if(url.pathname === '/api/admin/approve' && req.method === 'POST'){
-      const body = await readBody(req);
-      if(!checkAdmin(body.password)){ sendJson(res, 401, {error:'Bad admin password'}); return; }
-      const store = await readStore();
-      const idx = store.auth.pendingRequests.findIndex(r=>r.id===body.id);
-      if(idx === -1){ sendJson(res, 404, {error:'Request not found'}); return; }
-      const [entry] = store.auth.pendingRequests.splice(idx, 1);
-      const token = crypto.randomBytes(24).toString('hex');
-      store.auth.approvedUsers.push({ id: entry.id, name: entry.name, token, approvedAt: Date.now() });
-      await writeStore(store, `Approved ${entry.name}`);
-      sendJson(res, 200, { ok:true, token, name: entry.name });
-      return;
-    }
-
-    if(url.pathname === '/api/admin/deny' && req.method === 'POST'){
-      const body = await readBody(req);
-      if(!checkAdmin(body.password)){ sendJson(res, 401, {error:'Bad admin password'}); return; }
-      const store = await readStore();
-      store.auth.pendingRequests = store.auth.pendingRequests.filter(r=>r.id!==body.id);
-      await writeStore(store, `Denied access request ${body.id}`);
-      sendJson(res, 200, {ok:true});
-      return;
-    }
-
-    if(url.pathname === '/api/admin/revoke' && req.method === 'POST'){
-      const body = await readBody(req);
-      if(!checkAdmin(body.password)){ sendJson(res, 401, {error:'Bad admin password'}); return; }
-      const store = await readStore();
-      store.auth.approvedUsers = store.auth.approvedUsers.filter(u=>u.id!==body.id);
-      await writeStore(store, `Revoked access ${body.id}`);
-      sendJson(res, 200, {ok:true});
-      return;
-    }
-
-    res.writeHead(404, {'Content-Type': 'text/plain'});
-    res.end('Not found');
-  }catch(e){
-    sendJson(res, 500, {error: e.message});
-  }
+  return res.status(401).json({ error: 'Incorrect password' });
 });
 
-server.listen(PORT, () => {
-  console.log(`Ember's Adrift Loot Ledger running on port ${PORT}`);
-  console.log(USE_GITHUB
-    ? `Storage: GitHub — ${GITHUB_REPO} @ ${GITHUB_BRANCH} / ${GITHUB_PATH}`
-    : `Storage: local file at ${DATA_FILE} (set DATA_DIR to a persistent disk's mount path on paid Render, or set GITHUB_TOKEN + GITHUB_REPO for GitHub-backed storage)`);
+app.post('/api/logout', (req, res) => {
+  req.session.destroy(() => res.json({ ok: true }));
+});
+
+app.get('/api/session', (req, res) => {
+  res.json({ isAdmin: !!(req.session && req.session.isAdmin) });
+});
+
+// ---------- Read (public) ----------
+
+app.get('/api/wheel/:wheel', (req, res) => {
+  const { wheel } = req.params;
+  if (!validWheel(wheel)) return res.status(400).json({ error: 'Invalid wheel' });
+  res.json(getWheel(wheel));
+});
+
+// ---------- Write (admin only) ----------
+
+app.post('/api/wheel/:wheel/add', requireAdmin, (req, res) => {
+  const { wheel } = req.params;
+  const { name } = req.body || {};
+  if (!validWheel(wheel)) return res.status(400).json({ error: 'Invalid wheel' });
+  const trimmed = (name || '').trim();
+  if (!trimmed) return res.status(400).json({ error: 'Name required' });
+  if (trimmed.length > 40) return res.status(400).json({ error: 'Name too long' });
+
+  const row = db.prepare('SELECT COALESCE(MAX(position), -1) as m FROM players WHERE wheel = ?').get(wheel);
+  db.prepare('INSERT INTO players (wheel, name, position) VALUES (?, ?, ?)').run(wheel, trimmed, row.m + 1);
+  res.json(getWheel(wheel));
+});
+
+app.post('/api/wheel/:wheel/remove', requireAdmin, (req, res) => {
+  const { wheel } = req.params;
+  const { id } = req.body || {};
+  if (!validWheel(wheel)) return res.status(400).json({ error: 'Invalid wheel' });
+  db.prepare('DELETE FROM players WHERE id = ? AND wheel = ?').run(id, wheel);
+  renumberAndSave(wheel, getWheel(wheel));
+  res.json(getWheel(wheel));
+});
+
+// "Award" = the Suicide Kings action: this player got the loot, send them to the bottom
+app.post('/api/wheel/:wheel/award', requireAdmin, (req, res) => {
+  const { wheel } = req.params;
+  const { id } = req.body || {};
+  if (!validWheel(wheel)) return res.status(400).json({ error: 'Invalid wheel' });
+
+  const players = getWheel(wheel);
+  const idx = players.findIndex(p => p.id === Number(id));
+  if (idx === -1) return res.status(404).json({ error: 'Player not found' });
+
+  const [player] = players.splice(idx, 1);
+  players.push(player);
+  renumberAndSave(wheel, players);
+  res.json(getWheel(wheel));
+});
+
+// Manual nudge up/down, for correcting mistakes without a full "award"
+app.post('/api/wheel/:wheel/move', requireAdmin, (req, res) => {
+  const { wheel } = req.params;
+  const { id, direction } = req.body || {};
+  if (!validWheel(wheel)) return res.status(400).json({ error: 'Invalid wheel' });
+  if (!['up', 'down'].includes(direction)) return res.status(400).json({ error: 'Invalid direction' });
+
+  const players = getWheel(wheel);
+  const idx = players.findIndex(p => p.id === Number(id));
+  if (idx === -1) return res.status(404).json({ error: 'Player not found' });
+
+  const swapWith = direction === 'up' ? idx - 1 : idx + 1;
+  if (swapWith < 0 || swapWith >= players.length) return res.json(players);
+
+  [players[idx], players[swapWith]] = [players[swapWith], players[idx]];
+  renumberAndSave(wheel, players);
+  res.json(getWheel(wheel));
+});
+
+app.get('/healthz', (req, res) => res.json({ ok: true }));
+
+app.listen(PORT, () => {
+  console.log(`Embers Adrift loot wheel server listening on port ${PORT}`);
+  console.log(`Database file: ${DB_PATH}`);
 });
