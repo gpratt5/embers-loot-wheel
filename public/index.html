@@ -146,15 +146,21 @@
     border-radius: 14px;
     overflow: hidden;
   }
-  .list-head{
+  .list-head-row{
+    display:flex; align-items:center; justify-content:space-between;
+    gap: 10px; flex-wrap: wrap;
     padding: 12px 16px;
+    border-bottom: 1px solid var(--hairline);
+  }
+  .list-head{
     font-family:'JetBrains Mono',monospace;
     font-size: 0.72rem;
     color: var(--text-dim);
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    border-bottom: 1px solid var(--hairline);
   }
+  .toolbar{ display:flex; gap: 8px; flex-wrap: wrap; }
+  .toolbar.hidden{ display:none; }
   .row{
     display:flex; align-items:center; gap: 12px;
     padding: 10px 16px;
@@ -306,7 +312,13 @@
   </div>
 
   <div class="list-panel">
-    <div class="list-head" id="list-head">Gear priority order</div>
+    <div class="list-head-row" id="list-head-row">
+      <div class="list-head" id="list-head">Gear priority order</div>
+      <div class="toolbar hidden" id="toolbar">
+        <button class="icon" id="shuffle-btn">🎲 Shuffle order</button>
+        <button class="icon" id="copy-btn">⇄ Copy roster from other wheel</button>
+      </div>
+    </div>
     <div id="list-body"></div>
     <div class="add-form hidden" id="add-form">
       <input type="text" id="add-input" placeholder="Add raider name…" maxlength="40" />
@@ -342,6 +354,7 @@ const centerName = document.getElementById('center-name');
 const centerLabel = document.getElementById('center-label');
 const adminBadge = document.getElementById('admin-badge');
 const addForm = document.getElementById('add-form');
+const toolbar = document.getElementById('toolbar');
 const modal = document.getElementById('modal');
 const pwInput = document.getElementById('pw-input');
 const pwError = document.getElementById('pw-error');
@@ -373,6 +386,8 @@ function renderAdminState() {
   adminBadge.classList.toggle('active', isAdmin);
   addForm.classList.toggle('hidden', !isAdmin);
   addForm.style.display = isAdmin ? 'flex' : 'none';
+  toolbar.classList.toggle('hidden', !isAdmin);
+  toolbar.style.display = isAdmin ? 'flex' : 'none';
   render();
 }
 
@@ -507,6 +522,39 @@ async function submitAdd() {
     alert(e.message);
   }
 }
+
+// Shuffle / copy toolbar
+document.getElementById('shuffle-btn').addEventListener('click', async () => {
+  const label = currentWheel === 'gear' ? 'Gear' : 'Rune';
+  if (!confirm(`Shuffle the ${label} wheel into a new random order?`)) return;
+  try {
+    cache[currentWheel] = await api(`/api/wheel/${currentWheel}/shuffle`, { method: 'POST', body: '{}' });
+    render();
+  } catch (e) { alert(e.message); }
+});
+
+document.getElementById('copy-btn').addEventListener('click', async () => {
+  const source = currentWheel === 'gear' ? 'rune' : 'gear';
+  const sourceLabel = source === 'gear' ? 'Gear' : 'Rune';
+  const targetLabel = currentWheel === 'gear' ? 'Gear' : 'Rune';
+  const sourceCount = (cache[source] || []).length;
+  if (!sourceCount) {
+    alert(`The ${sourceLabel} wheel is empty — add raiders there first.`);
+    return;
+  }
+  if (!confirm(
+    `Replace the ${targetLabel} wheel's current roster with a copy of the ${sourceLabel} ` +
+    `wheel's ${sourceCount} raider(s), shuffled into a new random order?\n\n` +
+    `This will remove anyone currently on the ${targetLabel} wheel.`
+  )) return;
+  try {
+    cache[currentWheel] = await api(`/api/wheel/${currentWheel}/copy-from`, {
+      method: 'POST',
+      body: JSON.stringify({ source })
+    });
+    render();
+  } catch (e) { alert(e.message); }
+});
 
 // Admin badge / login modal
 adminBadge.addEventListener('click', async () => {
